@@ -1,0 +1,36 @@
+{
+  "name": "openclaw-kalshi-bot",
+  "version": "2.0.0",
+  "description": "Kalshi trading bot with OpenClaw notifications, dashboard, replay, and performance instrumentation",
+  "main": "dist/src/index.js",
+  "type": "commonjs",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "npm run build && vitest run",
+    "start": "npm run build && node dist/src/index.js",
+    "sanity": "npm run build && node dist/scripts/kalshiAuthcheck.js",
+    "kalshi:authcheck": "npm run build && node dist/scripts/kalshiAuthcheck.js",
+    "scan": "npm run build && node dist/scripts/scan.js",
+    "replay": "npm run build && node dist/scripts/replay.js",
+    "dev": "tsx src/index.ts",
+    "dev:kalshi:authcheck": "tsx scripts/kalshiAuthcheck.ts",
+    "dev:scan": "tsx scripts/scan.ts",
+    "dev:replay": "tsx scripts/replay.ts"
+  },
+  "engines": {
+    "node": ">=18.18"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.8.1",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.2"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/express": "^4.17.21",
+    "@types/node": "^22.13.10",
+    "tsx": "^4.19.3",
+    "typescript": "^5.8.2",
+    "vitest": "^3.2.4"
+  }
+}

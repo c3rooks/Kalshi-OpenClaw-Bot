@@ -1,0 +1,32 @@
+# Secrets / local config
+.env
+.env.local
+.env.*.local
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+secrets/
+
+# Databases and local runtime state
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+commands.txt
+reports/
+
+# Build outputs
+dist/
+node_modules/
+
+# OS/editor noise
+.DS_Store
+*.log
+.vscode/
+.idea/
+
+# Coverage / caches
+coverage/
+.nyc_output/
+.cache/

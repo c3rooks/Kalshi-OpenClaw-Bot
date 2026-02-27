@@ -1,0 +1,301 @@
+OpenClaw Kalshi Bot - Full Documentation
+========================================
+
+1) What This System Is
+----------------------
+
+This is a Node.js + TypeScript automated Kalshi trading system with:
+
+- Live/Dry-run execution engine
+- Kalshi market adapter + orderbook normalization
+- Pluggable strategy engine
+- Market intelligence layer (quality, probability, execution modeling, edge gate)
+- Auto-learning layer (decision journaling, attribution, shadow challengers, guarded promotion/rollback)
+- Dashboard + APIs for control and observability
+- OpenClaw Telegram notifications
+- SQLite persistence for all runtime state
+
+Primary runtime defaults are safety-oriented:
+- DRY_RUN true by default
+- LIVE requires explicit arm/confirm gates
+- hard risk caps and kill switches
+
+
+2) Tech Stack
+-------------
+
+Language/runtime:
+- Node.js (>=18.18)
+- TypeScript
+
+Core libraries:
+- express (dashboard/API)
+- better-sqlite3 (persistence)
+- dotenv (env loading)
+
+Dev/testing:
+- vitest
+- tsx
+
+No React is required.
+
+
+3) Project Layout
+-----------------
+
+- src/index.ts
+  Main bot loop, scheduler, execution, reconciliation, notifications
+- src/config.ts
+  Env-based defaults
+- src/settings/runtimeConfig.ts
+  Runtime-adjustable bot config loaded from SQLite settings
+- src/settings/secureStore.ts
+  Local secret storage (keychain/encrypted fallback)
+- src/kalshi/*
+  Kalshi client, signing, adapters, trader
+- src/plugins/*
+  Adapter/strategy/data-feed plugin wrappers
+- src/intel/*
+  Market type classifier, quality score, probability engines, execution model, edge gate
+- src/learning/engine.ts
+  Auto-learning and guarded promotion logic
+- src/db/*
+  Migrations, query layer, insert/update helpers
+- src/dashboard/*
+  HTML views + API routes + server bootstrap
+- scripts/*
+  Auth check, scan, replay scripts
+
+
+4) Data Model (SQLite)
+----------------------
+
+Core:
+- events
+- markets
+- orders
+- positions
+- perf
+- market_intelligence
+- settings
+
+Auto-learning:
+- decision_log
+  Every decision (champion + challengers), including feature context and final outcome link
+- attribution_log
+  Post-resolution root-cause labels for wins/losses
+- strategy_versions
+  Periodic profile snapshots: sample size, pnl, drawdown, score
+- promotion_events
+  Profile promotions/rollbacks and reasons
+
+
+5) Runtime Strategy Flow
+------------------------
+
+Per scan tick:
+
+1. Load runtime config
+2. Apply active learning profile overrides (time window + gates)
+3. Fetch candidate markets
+4. Filter/rank scan pool
+5. Pull orderbook + parse rules
+6. Run strategy decision (BUY/NOOP)
+7. Run intelligence evaluation:
+   - quality score
+   - model probability
+   - fill probability + expected cost
+   - edge gate
+8. Enforce risk/exposure/correlation guards
+9. Log decision for active profile + shadow profiles
+10. Attempt top candidates only
+11. On fill: create position, map decision->execution
+12. On resolve: compute fee-aware pnl + attribution
+
+
+6) Auto-Learning Design
+-----------------------
+
+Profiles:
+- champion (active profile)
+- cautious (more selective)
+- opportunistic (less selective)
+
+How learning works:
+
+- Every decision is logged for all profiles (champion + challengers).
+- Resolved positions are attributed with root cause labels, e.g.:
+  - negative_or_zero_edge
+  - low_fill_probability
+  - low_market_quality
+  - clock_drift_timing_risk
+- Periodically, profile performance is scored:
+  score = pnlUsd - 0.5 * maxDrawdownUsd + 2 * winRate
+- Promotion requires:
+  - minimum resolved sample size
+  - challenger score lift over current profile
+- Rollback trigger:
+  - active profile with meaningful sample and sustained drawdown
+  - auto-switch to cautious profile
+
+Guardrail principle:
+- learning adjusts selectivity, never bypasses hard risk controls.
+
+
+7) Risk and Safety Controls
+---------------------------
+
+Execution hard guards include:
+- maxOrderNotionalUsd
+- maxOrdersPerDay
+- duplicateCooldownSec
+- maxOpenPositions
+- dailyLossLimitUsd
+- max total / per-symbol / per-location exposure
+- correlation guard
+
+Live gate:
+- dryRun must be false
+- live confirmation code required
+- explicit acknowledge required
+- live arm timeout auto-disarms
+
+Kill switch:
+- STOP_NEW_TRADES via commands file, dashboard API, and UI control.
+
+
+8) Commands and Scripts
+-----------------------
+
+Install:
+  npm install
+
+Build:
+  npm run build
+
+Test:
+  npm run test
+
+Auth check:
+  npm run kalshi:authcheck
+
+Single scan:
+  npm run scan
+
+Replay:
+  npm run replay -- --from=YYYY-MM-DD --to=YYYY-MM-DD
+
+Run app:
+  npm start
+
+
+9) Dashboard and API
+--------------------
+
+Dashboard:
+- /              Home
+- /help          Setup wizard
+- /config        Bot config
+- /browse        Market browse
+- /trades        Trades explorer
+- /report        Execution report
+- /performance   Perf metrics
+- /intelligence  Intelligence views
+
+Operational API:
+- GET  /api/stats
+- GET  /api/account
+- GET  /api/settings
+- POST /api/settings
+- POST /api/control/stop
+- POST /api/control/start
+- GET  /api/learning/status
+- POST /api/setup/kalshi/test
+- POST /api/setup/openclaw/test
+
+
+10) Live Deployment (macOS)
+---------------------------
+
+Recommended process manager: pm2
+
+1. Install:
+  npm install -g pm2
+
+2. Start:
+  cd /Users/corey/Desktop/OpenClaw
+  pm2 start "npm start" --name openclaw-kalshi-bot
+
+3. Persist:
+  pm2 save
+  pm2 startup
+
+4. Verify:
+  curl -s http://127.0.0.1:3000/health
+  curl -s http://127.0.0.1:3000/api/stats
+  curl -s http://127.0.0.1:3000/api/learning/status
+
+
+11) Environment and Secrets
+---------------------------
+
+Non-secret runtime config:
+- Stored in SQLite settings table
+
+Secrets:
+- Stored via secure store (keychain when available, encrypted fallback)
+- LOCAL_MASTER_KEY required for encrypted fallback
+
+Never log:
+- private keys
+- secret payloads
+- Telegram bot tokens/secret config values
+
+
+12) Troubleshooting
+-------------------
+
+A) No trades happen
+- Check /api/stats for blocked reason
+- Check market focus and gate strictness
+- Check no stale open positions
+- Check opportunities API and scan-test output
+
+B) Too many requests / 429
+- Reduce scan load (already includes cache/backoff)
+- Lower topCandidatesPerTick
+- Increase scan interval if needed
+
+C) Clock drift warning
+- Sync system clock in macOS Date & Time settings
+- Drift-sensitive strategies degrade with high drift
+
+D) Reconciliation auth denied
+- Balance endpoint may pass while orders endpoint fails
+- Ensure Kalshi key has required portfolio/order scopes
+
+E) Live gate fails
+- Ensure dryRun=false first
+- Use current live confirm code from /api/settings
+- Re-arm when arm timeout expires
+
+
+13) Operational Recommendations
+-------------------------------
+
+Start small:
+- maxUsdPerTrade = 1 to 2
+- maxOpenPositions = 1
+- dailyLossLimitUsd = 3 to 5
+
+Scale only after:
+- positive realized pnl
+- acceptable drawdown
+- stable fills
+- stable API/reconciliation health
+
+Use learning status:
+- monitor activeProfile
+- monitor top attribution causes
+- inspect promotion events before raising risk
+
